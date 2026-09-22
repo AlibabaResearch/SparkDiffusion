@@ -30,9 +30,11 @@ sparse-attention checkout.
 
 ### Demo
 
-<video src="assets/demo.mp4" controls width="100%"></video>
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/c7f78418-50ac-4924-9251-ef070c406ecc" width="70%" controls></video>
+</div>
 
-[Open the demo video](assets/demo.mp4)
+### Resources
 
 - 📖 **Blog**: [sparkdiffusion.github.io](https://sparkdiffusion.github.io/)
 - 🤗 **Model weights**: _coming soon_

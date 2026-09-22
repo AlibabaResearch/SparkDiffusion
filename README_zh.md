@@ -29,9 +29,11 @@
 
 ### 演示视频
 
-<video src="assets/demo.mp4" controls width="100%"></video>
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/c7f78418-50ac-4924-9251-ef070c406ecc" width="70%" controls></video>
+</div>
 
-[打开演示视频](assets/demo.mp4)
+### 相关资源
 
 - 📖 **博客**: [sparkdiffusion.github.io](https://sparkdiffusion.github.io/)
 - 🤗 **模型权重**: _即将上线_
