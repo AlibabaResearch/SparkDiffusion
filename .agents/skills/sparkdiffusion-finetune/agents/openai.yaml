@@ -1,0 +1,4 @@
+interface:
+  display_name: "SparkDiffusion Finetune"
+  short_description: "Launch Wan sparse finetuning safely"
+  default_prompt: "Use $sparkdiffusion-finetune to configure and launch sparse finetuning for Wan."

@@ -1,0 +1,39 @@
+# ============================================================
+# SparkDiffusion — pip requirements
+# Assumes already installed: torch, torchvision, flash_attn
+# Run: pip install -r requirements.txt
+# ============================================================
+
+# Core training framework (megatron-core must be UNINSTALLED first)
+# pip uninstall megatron-core -y
+hydra-core>=1.3.2
+omegaconf>=2.3.0
+# Triton 3.4 fixes native FP8 MMA lowering for RTX 50-series (SM120).
+triton>=3.4.0
+
+# Logging & monitoring
+loguru>=0.7.0
+wandb>=0.15.0
+psutil>=5.9.0
+
+# Data processing
+webdataset>=0.2.80
+pandas>=2.0.0
+imageio[ffmpeg]>=2.30.0
+
+# Model utilities
+einops>=0.7.0
+safetensors>=0.4.0
+transformers>=4.40.0
+diffusers>=0.30.0
+accelerate>=1.0.0
+# ViT-H-14 vision tower for native Wan2.1 I2V CLIP .pth checkpoints
+open_clip_torch>=2.24.0
+
+# Numerical & misc
+scipy>=1.10.0
+attrs>=23.0.0
+fvcore>=0.1.5
+nvidia-ml-py>=12.0.0
+ftfy>=6.1.0
+regex>=2023.0.0

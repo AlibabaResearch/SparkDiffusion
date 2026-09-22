@@ -1,0 +1,4 @@
+interface:
+  display_name: "SparkDiffusion Distill"
+  short_description: "Run Wan few-step distillation workflows"
+  default_prompt: "Use $sparkdiffusion-distill to configure a reproducible Wan distillation run."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "SparkDiffusion Setup"
+  short_description: "Prepare paths, dependencies, weights, and datasets"
+  default_prompt: "Use $sparkdiffusion-setup to prepare this repository for a local training or inference run."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "SparkDiffusion Inference"
+  short_description: "Run Wan T2V or I2V inference"
+  default_prompt: "Use $sparkdiffusion-inference to run a validated Wan video inference job."
