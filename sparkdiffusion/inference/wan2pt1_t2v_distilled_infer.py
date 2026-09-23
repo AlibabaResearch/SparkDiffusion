@@ -130,7 +130,7 @@ def parse_arguments() -> argparse.Namespace:
     ], default="14B_rola", help="Model variant: dense / rola / pure_sla")
     parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to generate")
     parser.add_argument("--num_steps", type=int, choices=[1, 2, 3, 4, 8], default=4, help="1~4 or 8 for timestep-distilled inference")
-    parser.add_argument("--sigma_max", type=float, default=80, help="Initial sigma for the distilled sampler")
+    parser.add_argument("--sigma_max", type=float, default=1600, help="Initial sigma for the distilled sampler")
     parser.add_argument("--dit_path", type=str, default="", help="Custom path to the DiT model checkpoint for distilled models.")
     parser.add_argument("--vae_path", type=str, default="", help="Path to the Wan2.1 VAE.")
     parser.add_argument(
