@@ -10,11 +10,16 @@
 
 <p align="center">
   <a href="https://sparkdiffusion.github.io/"><img alt="Blog" src="https://img.shields.io/badge/📖_Blog-SparkDiffusion-orange"></a>
-  <a href="#"><img alt="Hugging Face" src="https://img.shields.io/badge/🤗_HuggingFace-Weights-yellow"></a>
+  <a href="https://huggingface.co/collections/alibabagroup/sparkdiffusion"><img alt="Hugging Face" src="https://img.shields.io/badge/🤗_HuggingFace-Weights-yellow"></a>
   <a href="LICENSE.txt"><img alt="License" src="https://img.shields.io/badge/License-Apache_2.0-blue"></a>
 </p>
 
 ---
+
+## 最新动态
+
+- **2026-09-25**:我们在 Hugging Face 上发布了 SparkDiffusion 模型权重:
+  [alibabagroup/sparkdiffusion](https://huggingface.co/collections/alibabagroup/sparkdiffusion)。
 
 ## 项目简介
 
@@ -36,11 +41,25 @@
 ### 相关资源
 
 - 📖 **博客**: [sparkdiffusion.github.io](https://sparkdiffusion.github.io/)
-- 🤗 **模型权重**: _即将上线_
+- 🤗 **模型权重**: [huggingface.co/collections/alibabagroup/sparkdiffusion](https://huggingface.co/collections/alibabagroup/sparkdiffusion)
 - 📄 **论文**:
   - SparkDiffusion: [arXiv:2609.23153](https://arxiv.org/abs/2609.23153)
   - RoLa（稀疏低秩注意力）: [arXiv:2609.06712](https://arxiv.org/abs/2609.06712)
   - CrossDistill（少步蒸馏）: [arXiv:2609.14725](https://arxiv.org/pdf/2609.14725v1)
+
+## 模型权重
+
+所有已发布的 checkpoint 均在
+[SparkDiffusion Hugging Face 合集](https://huggingface.co/collections/alibabagroup/sparkdiffusion)中:
+
+| 模型名称 | 模型链接 | 分辨率 | 稀疏度 | 步数 |
+| --- | --- | --- | --- | --- |
+| SparkWan2.1-T2V-1.3B-480P-0.90Sparsity | [Huggingface Model](https://huggingface.co/alibabagroup/SparkWan2.1-T2V-1.3B-480P-0.90Sparsity) | 480P | 0.90 | 4 |
+| SparkWan2.1-T2V-14B-480P-0.90Sparsity | [Huggingface Model](https://huggingface.co/alibabagroup/SparkWan2.1-T2V-14B-480P-0.90Sparsity) | 480P | 0.90 | 4 |
+| SparkWan2.1-T2V-14B-720P-0.97Sparsity | [Huggingface Model](https://huggingface.co/alibabagroup/SparkWan2.1-T2V-14B-720P-0.97Sparsity) | 720P | 0.97 | 4 |
+| SparkWan2.1-T2V-14B-720P-0.95Sparsity-3Step | [Huggingface Model](https://huggingface.co/alibabagroup/SparkWan2.1-T2V-14B-720P-0.95Sparsity-3Step) | 720P | 0.95 | 3 |
+| SparkWan2.1-I2V-14B-720P-0.97Sparsity | [Huggingface Model](https://huggingface.co/alibabagroup/SparkWan2.1-I2V-14B-720P-0.97Sparsity) | 720P | 0.97 | 4 |
+| SparkWan2.2-T2V-14B-480P-0.95Sparsity | [Huggingface Model](https://huggingface.co/alibabagroup/SparkWan2.2-T2V-14B-480P-0.95Sparsity) | 480P | 0.95 | 4 |
 
 ## 核心特性
 

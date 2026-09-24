@@ -10,11 +10,15 @@
 
 <p align="center">
   <a href="https://sparkdiffusion.github.io/"><img alt="Blog" src="https://img.shields.io/badge/📖_Blog-SparkDiffusion-orange"></a>
-  <a href="#"><img alt="Hugging Face" src="https://img.shields.io/badge/🤗_HuggingFace-Weights-yellow"></a>
+  <a href="https://huggingface.co/collections/alibabagroup/sparkdiffusion"><img alt="Hugging Face" src="https://img.shields.io/badge/🤗_HuggingFace-Weights-yellow"></a>
   <a href="LICENSE.txt"><img alt="License" src="https://img.shields.io/badge/License-Apache_2.0-blue"></a>
 </p>
 
 ---
+
+## News
+
+- **2026-09-25**: We released the SparkDiffusion model weights on Hugging Face: [alibabagroup/sparkdiffusion](https://huggingface.co/collections/alibabagroup/sparkdiffusion).
 
 ## Overview
 
@@ -37,11 +41,25 @@ sparse-attention checkout.
 ### Resources
 
 - 📖 **Blog**: [sparkdiffusion.github.io](https://sparkdiffusion.github.io/)
-- 🤗 **Model weights**: _coming soon_
+- 🤗 **Model weights**: [huggingface.co/collections/alibabagroup/sparkdiffusion](https://huggingface.co/collections/alibabagroup/sparkdiffusion)
 - 📄 **Papers**:
   - SparkDiffusion: [arXiv:2609.23153](https://arxiv.org/abs/2609.23153)
   - RoLa (sparse low-rank attention): [arXiv:2609.06712](https://arxiv.org/abs/2609.06712)
   - CrossDistill (few-step distillation): [arXiv:2609.14725](https://arxiv.org/pdf/2609.14725v1)
+
+## Model Weights
+
+All released checkpoints are available in the
+[SparkDiffusion Hugging Face collection](https://huggingface.co/collections/alibabagroup/sparkdiffusion):
+
+| Model Name | Model Link | Resolution | Sparsity | Steps |
+| --- | --- | --- | --- | --- |
+| SparkWan2.1-T2V-1.3B-480P-0.90Sparsity | [Huggingface Model](https://huggingface.co/alibabagroup/SparkWan2.1-T2V-1.3B-480P-0.90Sparsity) | 480P | 0.90 | 4 |
+| SparkWan2.1-T2V-14B-480P-0.90Sparsity | [Huggingface Model](https://huggingface.co/alibabagroup/SparkWan2.1-T2V-14B-480P-0.90Sparsity) | 480P | 0.90 | 4 |
+| SparkWan2.1-T2V-14B-720P-0.97Sparsity | [Huggingface Model](https://huggingface.co/alibabagroup/SparkWan2.1-T2V-14B-720P-0.97Sparsity) | 720P | 0.97 | 4 |
+| SparkWan2.1-T2V-14B-720P-0.95Sparsity-3Step | [Huggingface Model](https://huggingface.co/alibabagroup/SparkWan2.1-T2V-14B-720P-0.95Sparsity-3Step) | 720P | 0.95 | 3 |
+| SparkWan2.1-I2V-14B-720P-0.97Sparsity | [Huggingface Model](https://huggingface.co/alibabagroup/SparkWan2.1-I2V-14B-720P-0.97Sparsity) | 720P | 0.97 | 4 |
+| SparkWan2.2-T2V-14B-480P-0.95Sparsity | [Huggingface Model](https://huggingface.co/alibabagroup/SparkWan2.2-T2V-14B-480P-0.95Sparsity) | 480P | 0.95 | 4 |
 
 ## Highlights
 
