@@ -1,8 +1,9 @@
 from tqdm import tqdm
 import argparse
+import time
+from sparkdiffusion.inference.sampling_utils import positive_int, sample_output_path
 import os
 import torch
-from einops import repeat
 from PIL import Image
 import torchvision.transforms.v2 as T
 import numpy as np
@@ -57,7 +58,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--boundary", type=float, default=0.9, help="Timestep boundary for switching from high to low noise model.")
 
     parser.add_argument("--model_size", choices=["A14B", "A14B_rola"], default="A14B_rola", help="A14B = dense, A14B_rola = RoLa sparse attention")
-    parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to generate")
+    parser.add_argument("--num_samples", type=positive_int, default=1, help="Sequential samples per prompt (batch size 1); seeds start at --seed")
     parser.add_argument("--num_steps", type=int, default=40, help="Official Wan2.2 I2V default sampling steps")
     parser.add_argument("--sigma_max", type=float, default=0.999, help="Official UniPC raw sigma_max before timestep shift.")
     parser.add_argument("--sampler", choices=["Euler", "UniPC"], default="UniPC", help="Sampler")
@@ -149,7 +150,6 @@ if __name__ == "__main__":
     msk[:, :, 0, :, :] = 1.0
 
     y = torch.cat([msk, encoded_latents.to(**tensor_kwargs)], dim=1)
-    y = y.repeat(args.num_samples, 1, 1, 1, 1)
 
     log.info(f"Computing embedding for prompt: {args.prompt}")
     text_emb = get_umt5_embedding(checkpoint_path=args.text_encoder_path, prompts=args.prompt, tokenizer_path=args.tokenizer_path).to(dtype=torch.bfloat16).cuda()
@@ -157,60 +157,68 @@ if __name__ == "__main__":
     clear_umt5_memory()
 
     log.info(f"Generating with prompt: {args.prompt}")
-    condition = {"crossattn_emb": repeat(text_emb.to(**tensor_kwargs), "b l d -> (k b) l d", k=args.num_samples), "y_B_C_T_H_W": y}
-    uncondition = {"crossattn_emb": repeat(neg_text_emb.to(**tensor_kwargs), "b l d -> (k b) l d", k=args.num_samples), "y_B_C_T_H_W": y}
+    condition = {"crossattn_emb": text_emb.to(**tensor_kwargs), "y_B_C_T_H_W": y}
+    uncondition = {"crossattn_emb": neg_text_emb.to(**tensor_kwargs), "y_B_C_T_H_W": y}
 
-    to_show = []
+    for sample_idx in range(args.num_samples):
+        sample_seed = args.seed + sample_idx
+        phase = "warmup (may include compilation/autotuning)" if sample_idx == 0 else "after warmup"
+        sample_label = f"[sample {sample_idx + 1}/{args.num_samples}, seed={sample_seed}, {phase}]"
+        log.info(sample_label)
+        output_path = sample_output_path(args.save_path, sample_idx, args.num_samples, sample_seed)
+        state_shape = [tokenizer.latent_ch, lat_t, lat_h, lat_w]
 
-    state_shape = [tokenizer.latent_ch, lat_t, lat_h, lat_w]
+        generator = torch.Generator(device=tensor_kwargs["device"])
+        generator.manual_seed(sample_seed)
 
-    generator = torch.Generator(device=tensor_kwargs["device"])
-    generator.manual_seed(args.seed)
+        init_noise = torch.randn(
+            1,
+            *state_shape,
+            dtype=torch.float32,
+            device=tensor_kwargs["device"],
+            generator=generator,
+        )
 
-    init_noise = torch.randn(
-        args.num_samples,
-        *state_shape,
-        dtype=torch.float32,
-        device=tensor_kwargs["device"],
-        generator=generator,
-    )
+        x = init_noise
 
-    x = init_noise
+        samplers = {"Euler": FlowEulerSampler, "UniPC": FlowUniPCMultistepSampler}
+        sampler = samplers[args.sampler](num_train_timesteps=1000, sigma_max=args.sigma_max, sigma_min=0.0)
+        sampler.set_timesteps(num_inference_steps=args.num_steps, device=tensor_kwargs["device"], shift=args.timestep_shift)
 
-    samplers = {"Euler": FlowEulerSampler, "UniPC": FlowUniPCMultistepSampler}
-    sampler = samplers[args.sampler](num_train_timesteps=1000, sigma_max=args.sigma_max, sigma_min=0.0)
-    sampler.set_timesteps(num_inference_steps=args.num_steps, device=tensor_kwargs["device"], shift=args.timestep_shift)
+        # log.info(sampler.timesteps)
 
-    # log.info(sampler.timesteps)
+        ones = torch.ones(x.size(0), 1, device=x.device, dtype=x.dtype)
+        torch.cuda.synchronize()
+        denoise_start = time.perf_counter()
+        if low_noise_model is not None:
+            low_noise_model.cpu()
+        high_noise_model.cuda()
+        net = high_noise_model
+        switched = False
+        for _, t in enumerate(tqdm(sampler.timesteps)):
+            if low_noise_model is not None and t.item() < args.boundary * 1000 and not switched:
+                high_noise_model.cpu()
+                low_noise_model.cuda()
+                net = low_noise_model
+                switched = True
+                log.info("Switched to low noise model.")
+            timesteps = t * ones
 
-    ones = torch.ones(x.size(0), 1, device=x.device, dtype=x.dtype)
-    high_noise_model.cuda()
-    net = high_noise_model
-    switched = False
-    for _, t in enumerate(tqdm(sampler.timesteps)):
-        if low_noise_model is not None and t.item() < args.boundary * 1000 and not switched:
-            high_noise_model.cpu()
-            low_noise_model.cuda()
-            net = low_noise_model
-            switched = True
-            log.info("Switched to low noise model.")
-        timesteps = t * ones
+            with torch.no_grad():
+                v_cond = net(x_B_C_T_H_W=x.to(**tensor_kwargs), timesteps_B_T=timesteps.to(**tensor_kwargs), **condition).float()
+                v_uncond = net(x_B_C_T_H_W=x.to(**tensor_kwargs), timesteps_B_T=timesteps.to(**tensor_kwargs), **uncondition).float()
 
-        with torch.no_grad():
-            v_cond = net(x_B_C_T_H_W=x.to(**tensor_kwargs), timesteps_B_T=timesteps.to(**tensor_kwargs), **condition).float()
-            v_uncond = net(x_B_C_T_H_W=x.to(**tensor_kwargs), timesteps_B_T=timesteps.to(**tensor_kwargs), **uncondition).float()
+            v_pred = v_uncond + args.guidance_scale * (v_cond - v_uncond)
 
-        v_pred = v_uncond + args.guidance_scale * (v_cond - v_uncond)
+            x = sampler.step(v_pred, t, x)
 
-        x = sampler.step(v_pred, t, x)
+        torch.cuda.synchronize()
+        denoise_end = time.perf_counter()
+        log.info(f"{sample_label} denoising time: {denoise_end - denoise_start:.2f}s")
+        samples = x.float()
+        video = tokenizer.decode(samples)  # [B, C, T, H, W] in [-1, 1]
 
-    samples = x.float()
-    video = tokenizer.decode(samples)  # [B, C, T, H, W] in [-1, 1]
-
-    # Save each sample as individual video
-    save_dir = args.save_path if not args.save_path.endswith('.mp4') else os.path.dirname(args.save_path)
-    os.makedirs(save_dir, exist_ok=True)
-    for s_idx, vid in enumerate(video):
-        out_path = os.path.join(save_dir, f'sample_{s_idx:02d}.mp4')
-        save_image_or_video(vid, out_path, fps=16)
-        log.success(f'Saved: {out_path}')
+        save_image_or_video(video[0], output_path, fps=16)
+        log.success(f"Saved: {output_path}")
+        # Do not retain the previous decoded video during the next sample.
+        del video, samples, x

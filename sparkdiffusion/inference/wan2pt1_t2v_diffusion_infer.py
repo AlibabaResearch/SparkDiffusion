@@ -1,10 +1,11 @@
 from tqdm import tqdm
 import argparse
+from sparkdiffusion.inference.sampling_utils import positive_int, sample_output_path
 import os
 import time
 
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 
 from imaginaire.utils.io import save_image_or_video
 from imaginaire.lazy_config import LazyCall as L, LazyDict, instantiate
@@ -117,7 +118,7 @@ def parse_arguments() -> argparse.Namespace:
         "1.3B_rola", "14B_rola",
         "1.3B_pure_sla", "14B_pure_sla",
     ], default="14B", help="Model variant: dense / rola / pure_sla")
-    parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to generate per prompt")
+    parser.add_argument("--num_samples", type=positive_int, default=1, help="Sequential samples per prompt (batch size 1); seeds start at --seed")
     parser.add_argument("--num_steps", type=int, default=50, help="Number of sampling steps")
     parser.add_argument("--sigma_max", type=float, default=0.999, help="Official UniPC raw sigma_max before timestep shift")
     parser.add_argument("--sampler", choices=["Euler", "UniPC"], default="UniPC", help="Sampler")
@@ -279,68 +280,76 @@ if __name__ == "__main__":
     prompt = prompts[0]
     log.info(f"Prompt: {prompt[:80]}")
 
-    sampler.set_timesteps(num_inference_steps=args.num_steps, device=tensor_kwargs["device"], shift=args.timestep_shift)
+    for sample_idx in range(args.num_samples):
+        sample_seed = args.seed + sample_idx
+        phase = "warmup (may include compilation/autotuning)" if sample_idx == 0 else "after warmup"
+        sample_label = f"[sample {sample_idx + 1}/{args.num_samples}, seed={sample_seed}, {phase}]"
+        log.info(sample_label)
+        output_path = sample_output_path(args.save_path, sample_idx, args.num_samples, sample_seed)
+        sampler.set_timesteps(num_inference_steps=args.num_steps, device=tensor_kwargs["device"], shift=args.timestep_shift)
 
-    text_emb = all_text_embs[0:1]  # [1, L, D]
-    condition = {"crossattn_emb": repeat(text_emb.to(**tensor_kwargs), "b l d -> (k b) l d", k=args.num_samples)}
-    uncondition = {"crossattn_emb": repeat(neg_text_emb.to(**tensor_kwargs), "b l d -> (k b) l d", k=args.num_samples)}
+        text_emb = all_text_embs[0:1]  # [1, L, D]
+        condition = {"crossattn_emb": text_emb.to(**tensor_kwargs)}
+        uncondition = {"crossattn_emb": neg_text_emb.to(**tensor_kwargs)}
 
-    generator = torch.Generator(device=tensor_kwargs["device"])
-    generator.manual_seed(args.seed)
+        generator = torch.Generator(device=tensor_kwargs["device"])
+        generator.manual_seed(sample_seed)
 
-    init_noise = torch.randn(
-        args.num_samples,
-        *state_shape,
-        dtype=torch.float32,
-        device=tensor_kwargs["device"],
-        generator=generator,
-    )
+        init_noise = torch.randn(
+            1,
+            *state_shape,
+            dtype=torch.float32,
+            device=tensor_kwargs["device"],
+            generator=generator,
+        )
 
-    x = init_noise
-    ones = torch.ones(x.size(0), 1, device=x.device, dtype=x.dtype)
+        x = init_noise
+        ones = torch.ones(x.size(0), 1, device=x.device, dtype=x.dtype)
 
-    torch.cuda.synchronize()
-    denoise_start = time.perf_counter()
+        torch.cuda.synchronize()
+        denoise_start = time.perf_counter()
 
-    if args.profile_attention:
-        from sparkdiffusion.networks.wan_rola_attention import AttnProfiler
+        if args.profile_attention:
+            from sparkdiffusion.networks.wan_rola_attention import AttnProfiler
 
-        AttnProfiler.enable()
+            AttnProfiler.enable()
 
-    for _, t in enumerate(tqdm(sampler.timesteps, desc="Sampling", leave=False)):
-        timesteps = t * ones
-        with torch.no_grad():
-            v_cond = net(
-                x_B_C_T_H_W=x.to(**tensor_kwargs),
-                timesteps_B_T=timesteps.to(**tensor_kwargs),
-                **condition,
-            ).float()
-            v_uncond = net(
-                x_B_C_T_H_W=x.to(**tensor_kwargs),
-                timesteps_B_T=timesteps.to(**tensor_kwargs),
-                **uncondition,
-            ).float()
+        for _, t in enumerate(tqdm(sampler.timesteps, desc="Sampling", leave=False)):
+            timesteps = t * ones
+            with torch.no_grad():
+                v_cond = net(
+                    x_B_C_T_H_W=x.to(**tensor_kwargs),
+                    timesteps_B_T=timesteps.to(**tensor_kwargs),
+                    **condition,
+                ).float()
+                v_uncond = net(
+                    x_B_C_T_H_W=x.to(**tensor_kwargs),
+                    timesteps_B_T=timesteps.to(**tensor_kwargs),
+                    **uncondition,
+                ).float()
 
-        v_pred = v_uncond + args.guidance_scale * (v_cond - v_uncond)
-        x = sampler.step(v_pred, t, x)
+            v_pred = v_uncond + args.guidance_scale * (v_cond - v_uncond)
+            x = sampler.step(v_pred, t, x)
 
-    if args.profile_attention:
-        AttnProfiler.report()
-        AttnProfiler.disable()
+        if args.profile_attention:
+            AttnProfiler.report()
+            AttnProfiler.disable()
 
-    torch.cuda.synchronize()
-    denoise_end = time.perf_counter()
-    log.info(f"Denoising time: {denoise_end - denoise_start:.2f}s")
+        torch.cuda.synchronize()
+        denoise_end = time.perf_counter()
+        log.info(f"{sample_label} denoising time: {denoise_end - denoise_start:.2f}s")
 
-    samples = x.float()
-    video = tokenizer.decode(samples)
-    video = (1.0 + video.float().cpu().clamp(-1, 1)) / 2.0  # [B, C, T, H, W]
-    to_show = video.unsqueeze(0)  # [1, B, C, T, H, W]
-    save_image_or_video(
-        rearrange(to_show, "n b c t h w -> c t (n h) (b w)"),
-        args.save_path,
-        fps=16,
-    )
-    log.info(f"Saved: {args.save_path}")
+        samples = x.float()
+        video = tokenizer.decode(samples)
+        video = (1.0 + video.float().cpu().clamp(-1, 1)) / 2.0  # [B, C, T, H, W]
+        to_show = video.unsqueeze(0)  # [1, B, C, T, H, W]
+        save_image_or_video(
+            rearrange(to_show, "n b c t h w -> c t (n h) (b w)"),
+            output_path,
+            fps=16,
+        )
+        log.info(f"Saved: {output_path}")
+        # Do not retain the previous decoded video during the next sample.
+        del video, samples, x, to_show
 
-    log.success(f"Done! Generated one prompt -> {args.save_path}")
+    log.success(f"Done! Generated {args.num_samples} samples for one prompt -> {args.save_path}")

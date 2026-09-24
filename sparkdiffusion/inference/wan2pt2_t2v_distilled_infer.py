@@ -24,13 +24,14 @@ Follows the official Wan 2.2 dual-model pattern:
 """
 
 import argparse
+from sparkdiffusion.inference.sampling_utils import positive_int, sample_output_path
 import os
 import re
 import unicodedata
 import time
 
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 from tqdm import tqdm
 
 from imaginaire.utils.io import save_image_or_video
@@ -111,7 +112,7 @@ def parse_arguments() -> argparse.Namespace:
                         help="Path to the low-noise student checkpoint")
     parser.add_argument("--boundary", type=float, default=0.875,
                         help="RF-domain boundary for switching high/low noise students (official Wan2.2 t2v boundary, trig≈1.4289)")
-    parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to generate")
+    parser.add_argument("--num_samples", type=positive_int, default=1, help="Sequential samples per prompt (batch size 1); seeds start at --seed")
     parser.add_argument("--num_steps_high", type=int, default=2,
                         help="Sampling steps for high-noise student (covers [pi/2, boundary])")
     parser.add_argument("--num_steps_low", type=int, default=2,
@@ -245,17 +246,23 @@ if __name__ == "__main__":
     ]
 
     # Generate the requested inference case.
-    for p_idx, prompt in enumerate(tqdm(prompts, desc="Prompts")):
+    for sample_idx in range(args.num_samples):
+        p_idx, prompt = 0, prompts[0]
+        sample_seed = args.seed + sample_idx
+        phase = "warmup (may include compilation/autotuning)" if sample_idx == 0 else "after warmup"
+        sample_label = f"[sample {sample_idx + 1}/{args.num_samples}, seed={sample_seed}, {phase}]"
+        log.info(sample_label)
+        output_path = sample_output_path(args.save_path, sample_idx, args.num_samples, sample_seed)
         log.info(f"[{p_idx + 1}/{len(prompts)}] {prompt[:80]}")
 
         text_emb = all_text_embs[p_idx : p_idx + 1]
-        condition = {"crossattn_emb": repeat(text_emb.to(**tensor_kwargs), "b l d -> (k b) l d", k=args.num_samples)}
+        condition = {"crossattn_emb": text_emb.to(**tensor_kwargs)}
 
         generator = torch.Generator(device=tensor_kwargs["device"])
-        generator.manual_seed(args.seed)
+        generator.manual_seed(sample_seed)
 
         init_noise = torch.randn(
-            args.num_samples, *state_shape,
+            1, *state_shape,
             dtype=torch.float32, device=tensor_kwargs["device"], generator=generator,
         )
 
@@ -291,7 +298,7 @@ if __name__ == "__main__":
 
         torch.cuda.synchronize()
         denoise_end = time.perf_counter()
-        log.info(f"[prompt{p_idx}] denoising time: {denoise_end - denoise_start:.2f}s "
+        log.info(f"{sample_label} denoising time: {denoise_end - denoise_start:.2f}s "
                  f"({args.num_steps_high}+{args.num_steps_low} steps)")
 
         samples = x.float()
@@ -301,6 +308,8 @@ if __name__ == "__main__":
         to_show = video.unsqueeze(0)
         save_image_or_video(
             rearrange(to_show, "n b c t h w -> c t (n h) (b w)"),
-            args.save_path, fps=16,
+            output_path, fps=16,
         )
-        log.info(f"Saved: {args.save_path}")
+        log.info(f"Saved: {output_path}")
+        # Do not retain the previous decoded video during the next sample.
+        del video, samples, x, to_show

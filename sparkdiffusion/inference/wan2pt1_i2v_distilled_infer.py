@@ -15,6 +15,7 @@ Usage mirrors wan2pt1_t2v_distilled_infer.py; the extra required arguments are
 --image_path and --clip_encoder_path.
 """
 import argparse
+from sparkdiffusion.inference.sampling_utils import positive_int, sample_output_path
 import os
 import time
 
@@ -22,7 +23,7 @@ import numpy as np
 import torch
 import torchvision.transforms.v2 as T
 from PIL import Image
-from einops import rearrange, repeat
+from einops import rearrange
 from tqdm import tqdm
 
 from imaginaire.utils.io import save_image_or_video
@@ -116,7 +117,7 @@ def parse_arguments() -> argparse.Namespace:
                         help="Model variant: dense / rola / pure_sla. I2V has no 1.3B. "
                              "pure_sla is a placeholder: it needs the external sparse_linear_attention "
                              "package and there is no pure-SLA-distilled i2v checkpoint.")
-    parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to generate")
+    parser.add_argument("--num_samples", type=positive_int, default=1, help="Sequential samples per prompt (batch size 1); seeds start at --seed")
     parser.add_argument("--num_steps", type=int, choices=[1, 2, 3, 4, 8], default=4,
                         help="1~4 or 8 for timestep-distilled inference")
     parser.add_argument("--sigma_max", type=float, default=1600.0, help="Initial sigma for the distilled sampler (matches training config)")
@@ -263,13 +264,11 @@ if __name__ == "__main__":
     msk = torch.zeros(1, 4, lat_t, lat_h, lat_w, device=tensor_kwargs["device"], dtype=tensor_kwargs["dtype"])
     msk[:, :, 0, :, :] = 1.0
     y = torch.cat([msk, encoded_latents.to(**tensor_kwargs)], dim=1)  # [1, 20, T, H, W]
-    y = y.repeat(args.num_samples, 1, 1, 1, 1)
 
     # --- CLIP first-frame feature for cross-attention ---
     log.info(f"Loading CLIP encoder from {args.clip_encoder_path}")
     clip_encoder = WanCLIPImageEncoder(args.clip_encoder_path, dtype=torch.float16, device="cuda")
     frame_cond = clip_encoder.encode_first_frame(image_tensor).to(dtype=torch.bfloat16)  # [1, 257, 1280]
-    frame_cond = frame_cond.repeat(args.num_samples, 1, 1)
     # The DiT needs every spare byte at 720p, so drop CLIP once its feature is out.
     del clip_encoder
     torch.cuda.empty_cache()
@@ -310,21 +309,27 @@ if __name__ == "__main__":
     log.info(f"torch.compile enabled ({COMPILE_MODE})")
 
     # Generate the requested inference case.
-    for p_idx, prompt in enumerate(tqdm(prompts, desc="Prompts")):
+    for sample_idx in range(args.num_samples):
+        p_idx, prompt = 0, prompts[0]
+        sample_seed = args.seed + sample_idx
+        phase = "warmup (may include compilation/autotuning)" if sample_idx == 0 else "after warmup"
+        sample_label = f"[sample {sample_idx + 1}/{args.num_samples}, seed={sample_seed}, {phase}]"
+        log.info(sample_label)
+        output_path = sample_output_path(args.save_path, sample_idx, args.num_samples, sample_seed)
         log.info(f"[{p_idx + 1}/{len(prompts)}] {prompt[:80]}")
 
         text_emb = all_text_embs[p_idx : p_idx + 1]  # [1, L, D]
         condition = {
-            "crossattn_emb": repeat(text_emb.to(**tensor_kwargs), "b l d -> (k b) l d", k=args.num_samples),
+            "crossattn_emb": text_emb.to(**tensor_kwargs),
             "y_B_C_T_H_W": y,
             "frame_cond_crossattn_emb_B_L_D": frame_cond,
         }
 
         generator = torch.Generator(device=tensor_kwargs["device"])
-        generator.manual_seed(args.seed)
+        generator.manual_seed(sample_seed)
 
         init_noise = torch.randn(
-            args.num_samples,
+            1,
             *state_shape,
             dtype=torch.float32,
             device=tensor_kwargs["device"],
@@ -348,7 +353,7 @@ if __name__ == "__main__":
 
         torch.cuda.synchronize()
         denoise_end = time.perf_counter()
-        log.info(f"[prompt{p_idx}] denoising time: {denoise_end - denoise_start:.2f}s")
+        log.info(f"{sample_label} denoising time: {denoise_end - denoise_start:.2f}s")
 
         samples = x.float()
         video = tokenizer.decode(samples)
@@ -357,9 +362,11 @@ if __name__ == "__main__":
         to_show = video.unsqueeze(0)  # [1, B, C, T, H, W]
         save_image_or_video(
             rearrange(to_show, "n b c t h w -> c t (n h) (b w)"),
-            args.save_path,
+            output_path,
             fps=16,
         )
-        log.info(f"Saved: {args.save_path}")
+        log.info(f"Saved: {output_path}")
+        # Do not retain the previous decoded video during the next sample.
+        del video, samples, x, to_show
 
-    log.success(f"Done! Generated one prompt -> {args.save_path}")
+    log.success(f"Done! Generated {args.num_samples} samples for one prompt -> {args.save_path}")

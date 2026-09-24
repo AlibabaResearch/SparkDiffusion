@@ -1,6 +1,8 @@
 import argparse
+import time
+from sparkdiffusion.inference.sampling_utils import positive_int, sample_output_path
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 from tqdm import tqdm
 from PIL import Image
 import torchvision.transforms.v2 as T
@@ -62,7 +64,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--boundary", type=float, default=0.9, help="Timestep boundary for switching from high to low noise model.")
 
     parser.add_argument("--model_size", choices=["A14B"], default="A14B", help="Size of the model to use")
-    parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to generate")
+    parser.add_argument("--num_samples", type=positive_int, default=1, help="Sequential samples per prompt (batch size 1); seeds start at --seed")
     parser.add_argument("--num_steps", type=int, choices=[1, 2, 3, 4], default=4, help="1~4 for timestep-distilled inference")
     parser.add_argument("--sigma_max", type=float, default=200, help="Initial sigma for the distilled sampler")
     parser.add_argument("--vae_path", type=str, default="", help="Path to the Wan2.1 VAE.")
@@ -146,76 +148,91 @@ if __name__ == "__main__":
     msk[:, :, 0, :, :] = 1.0
 
     y = torch.cat([msk, encoded_latents.to(**tensor_kwargs)], dim=1)
-    y = y.repeat(args.num_samples, 1, 1, 1, 1)
 
     log.info(f"Computing embedding for prompt: {args.prompt}")
     text_emb = get_umt5_embedding(checkpoint_path=args.text_encoder_path, tokenizer_path=args.tokenizer_path, prompts=args.prompt).to(dtype=torch.bfloat16).cuda()
     clear_umt5_memory()
 
     log.info(f"Generating with prompt: {args.prompt}")
-    condition = {"crossattn_emb": repeat(text_emb.to(**tensor_kwargs), "b l d -> (k b) l d", k=args.num_samples), "y_B_C_T_H_W": y}
+    condition = {"crossattn_emb": text_emb.to(**tensor_kwargs), "y_B_C_T_H_W": y}
 
-    to_show = []
+    for sample_idx in range(args.num_samples):
+        sample_seed = args.seed + sample_idx
+        phase = "warmup (may include compilation/autotuning)" if sample_idx == 0 else "after warmup"
+        sample_label = f"[sample {sample_idx + 1}/{args.num_samples}, seed={sample_seed}, {phase}]"
+        log.info(sample_label)
+        output_path = sample_output_path(args.save_path, sample_idx, args.num_samples, sample_seed)
+        to_show = []
 
-    state_shape = [tokenizer.latent_ch, lat_t, lat_h, lat_w]
+        state_shape = [tokenizer.latent_ch, lat_t, lat_h, lat_w]
 
-    generator = torch.Generator(device=tensor_kwargs["device"])
-    generator.manual_seed(args.seed)
+        generator = torch.Generator(device=tensor_kwargs["device"])
+        generator.manual_seed(sample_seed)
 
-    init_noise = torch.randn(
-        args.num_samples,
-        *state_shape,
-        dtype=torch.float32,
-        device=tensor_kwargs["device"],
-        generator=generator,
-    )
+        init_noise = torch.randn(
+            1,
+            *state_shape,
+            dtype=torch.float32,
+            device=tensor_kwargs["device"],
+            generator=generator,
+        )
 
-    # rf-domain schedule aligned with rf-native distillation:
-    #   HIGH: [rf_start, 0.933781, boundary]   LOW: [boundary, 0.608979, 0]
-    # i.e. the middle knot IS the MoE boundary, so the expert switch lands exactly
-    # on it (high = first 2 steps, low = last 2), matching backward_timesteps.
-    # 0.933781/0.608979 = legacy TrigFlow knots 1.5/1.0 via rf = sin(t)/(cos(t)+sin(t)).
-    mid_t = [0.933781, args.boundary, 0.608979][: args.num_steps - 1]
-    rf_start = args.sigma_max / (args.sigma_max + 1.0)
+        # rf-domain schedule aligned with rf-native distillation:
+        #   HIGH: [rf_start, 0.933781, boundary]   LOW: [boundary, 0.608979, 0]
+        # i.e. the middle knot IS the MoE boundary, so the expert switch lands exactly
+        # on it (high = first 2 steps, low = last 2), matching backward_timesteps.
+        # 0.933781/0.608979 = legacy TrigFlow knots 1.5/1.0 via rf = sin(t)/(cos(t)+sin(t)).
+        mid_t = [0.933781, args.boundary, 0.608979][: args.num_steps - 1]
+        rf_start = args.sigma_max / (args.sigma_max + 1.0)
 
-    t_steps = torch.tensor(
-        [rf_start, *mid_t, 0.0],
-        dtype=torch.float64,
-        device=init_noise.device,
-    )
+        t_steps = torch.tensor(
+            [rf_start, *mid_t, 0.0],
+            dtype=torch.float64,
+            device=init_noise.device,
+        )
 
-    x = init_noise.to(torch.float64) * t_steps[0]
-    ones = torch.ones(x.size(0), 1, device=x.device, dtype=x.dtype)
-    total_steps = t_steps.shape[0] - 1
-    high_noise_model.cuda()
-    net = high_noise_model
-    switched = False
-    for i, (t_cur, t_next) in enumerate(tqdm(list(zip(t_steps[:-1], t_steps[1:])), desc="Sampling", total=total_steps)):
-        if t_cur.item() < args.boundary and not switched:
-            high_noise_model.cpu()
-            low_noise_model.cuda()
-            net = low_noise_model
-            switched = True
-            log.info("Switched to low noise model.")
-        with torch.no_grad():
-            v_pred = net(x_B_C_T_H_W=x.to(**tensor_kwargs), timesteps_B_T=(t_cur.float() * ones * 1000).to(**tensor_kwargs), **condition).to(
-                torch.float64
-            )
-            if args.ode:
-                x = x - (t_cur - t_next) * v_pred
-            else:
-                x = (1 - t_next) * (x - t_cur * v_pred) + t_next * torch.randn(
-                    *x.shape,
-                    dtype=torch.float32,
-                    device=tensor_kwargs["device"],
-                    generator=generator,
+        x = init_noise.to(torch.float64) * t_steps[0]
+        ones = torch.ones(x.size(0), 1, device=x.device, dtype=x.dtype)
+        total_steps = t_steps.shape[0] - 1
+        torch.cuda.synchronize()
+        denoise_start = time.perf_counter()
+        if low_noise_model is not None:
+            low_noise_model.cpu()
+        high_noise_model.cuda()
+        net = high_noise_model
+        switched = False
+        for i, (t_cur, t_next) in enumerate(tqdm(list(zip(t_steps[:-1], t_steps[1:])), desc="Sampling", total=total_steps)):
+            if t_cur.item() < args.boundary and not switched:
+                high_noise_model.cpu()
+                low_noise_model.cuda()
+                net = low_noise_model
+                switched = True
+                log.info("Switched to low noise model.")
+            with torch.no_grad():
+                v_pred = net(x_B_C_T_H_W=x.to(**tensor_kwargs), timesteps_B_T=(t_cur.float() * ones * 1000).to(**tensor_kwargs), **condition).to(
+                    torch.float64
                 )
-    samples = x.float()
+                if args.ode:
+                    x = x - (t_cur - t_next) * v_pred
+                else:
+                    x = (1 - t_next) * (x - t_cur * v_pred) + t_next * torch.randn(
+                        *x.shape,
+                        dtype=torch.float32,
+                        device=tensor_kwargs["device"],
+                        generator=generator,
+                    )
+        torch.cuda.synchronize()
+        denoise_end = time.perf_counter()
+        log.info(f"{sample_label} denoising time: {denoise_end - denoise_start:.2f}s")
+        samples = x.float()
 
-    video = tokenizer.decode(samples)
+        video = tokenizer.decode(samples)
 
-    to_show.append(video.float().cpu())
+        to_show.append(video.float().cpu())
 
-    to_show = (1.0 + torch.stack(to_show, dim=0).clamp(-1, 1)) / 2.0
+        to_show = (1.0 + torch.stack(to_show, dim=0).clamp(-1, 1)) / 2.0
 
-    save_image_or_video(rearrange(to_show, "n b c t h w -> c t (n h) (b w)"), args.save_path, fps=16)
+        save_image_or_video(rearrange(to_show, "n b c t h w -> c t (n h) (b w)"), output_path, fps=16)
+        log.info(f"Saved: {output_path}")
+        # Do not retain the previous decoded video during the next sample.
+        del video, samples, x, to_show
