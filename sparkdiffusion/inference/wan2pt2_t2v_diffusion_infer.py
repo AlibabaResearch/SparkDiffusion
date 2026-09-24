@@ -7,13 +7,13 @@ at boundary_ratio based on timestep, matching the official Wan 2.2 pipeline.
 """
 from tqdm import tqdm
 import argparse
+from sparkdiffusion.inference.sampling_utils import positive_int, sample_output_path
 import os
 import re
 import time
 import unicodedata
 
 import torch
-from einops import repeat
 
 from imaginaire.utils.io import save_image_or_video
 from imaginaire.lazy_config import LazyCall as L, LazyDict, instantiate
@@ -134,7 +134,7 @@ def parse_arguments() -> argparse.Namespace:
                              "Default keeps the value declared in the model config.")
     parser.add_argument("--boundary_ratio", type=float, default=0.875,
                         help="RF-domain boundary between high/low noise experts")
-    parser.add_argument("--num_samples", type=int, default=1)
+    parser.add_argument("--num_samples", type=positive_int, default=1, help="Sequential samples per prompt (batch size 1); seeds start at --seed")
     parser.add_argument("--num_steps", type=int, default=40,
                         help="Official Wan2.2 A14B default sampling steps")
     parser.add_argument("--sigma_max", type=float, default=0.999,
@@ -166,7 +166,7 @@ if __name__ == "__main__":
     prompts = [args.prompt]
 
     # Output directory
-    if args.save_path.endswith(".mp4"):
+    if args.save_path.lower().endswith(".mp4"):
         save_dir = os.path.dirname(args.save_path) or "."
     else:
         save_dir = args.save_path
@@ -237,7 +237,13 @@ if __name__ == "__main__":
     # ------------------------------------------------------------------
     # Inference loop
     # ------------------------------------------------------------------
-    for p_idx, prompt in enumerate(tqdm(prompts, desc="Prompts")):
+    for sample_idx in range(args.num_samples):
+        p_idx, prompt = 0, prompts[0]
+        sample_seed = args.seed + sample_idx
+        phase = "warmup (may include compilation/autotuning)" if sample_idx == 0 else "after warmup"
+        sample_label = f"[sample {sample_idx + 1}/{args.num_samples}, seed={sample_seed}, {phase}]"
+        log.info(sample_label)
+        output_path = sample_output_path(args.save_path, sample_idx, args.num_samples, sample_seed)
         log.info(f"[{p_idx + 1}/{len(prompts)}] {prompt[:80]}")
 
         sampler.set_timesteps(
@@ -246,16 +252,17 @@ if __name__ == "__main__":
         )
 
         text_emb = all_text_embs[p_idx:p_idx + 1]
-        condition = {"crossattn_emb": repeat(text_emb.to(**tensor_kwargs), "b l d -> (k b) l d", k=args.num_samples)}
-        uncondition = {"crossattn_emb": repeat(neg_text_emb.to(**tensor_kwargs), "b l d -> (k b) l d", k=args.num_samples)}
+        condition = {"crossattn_emb": text_emb.to(**tensor_kwargs)}
+        uncondition = {"crossattn_emb": neg_text_emb.to(**tensor_kwargs)}
 
         generator = torch.Generator(device=tensor_kwargs["device"])
-        generator.manual_seed(args.seed + p_idx)
+        generator.manual_seed(sample_seed)
 
-        x = torch.randn(args.num_samples, *state_shape, dtype=torch.float32,
+        x = torch.randn(1, *state_shape, dtype=torch.float32,
                         device=tensor_kwargs["device"], generator=generator)
-        ones = torch.ones(args.num_samples, device=tensor_kwargs["device"]).float()
+        ones = torch.ones(1, device=tensor_kwargs["device"]).float()
 
+        torch.cuda.synchronize()
         denoise_start = time.perf_counter()
         n_high, n_low = 0, 0
 
@@ -310,19 +317,16 @@ if __name__ == "__main__":
 
         torch.cuda.synchronize()
         denoise_end = time.perf_counter()
-        log.info(f"[prompt{p_idx}] denoising time: {denoise_end - denoise_start:.2f}s "
+        log.info(f"{sample_label} denoising time: {denoise_end - denoise_start:.2f}s "
                  f"(high-noise: {n_high} steps, low-noise: {n_low} steps)")
 
         samples = x.float()
 
         # Decode
         video = tokenizer.decode(samples.to("cuda"))
-        for s_idx, vid in enumerate(video):
-            out_path = os.path.join(
-                save_dir,
-                f"prompt_{p_idx:02d}_sample_{s_idx:02d}_{_sanitize_filename(prompt)}.mp4",
-            )
-            save_image_or_video(vid, out_path, fps=16)
-            log.success(f"Saved: {out_path}")
+        save_image_or_video(video[0], output_path, fps=16)
+        log.success(f"Saved: {output_path}")
+        # Do not retain the previous decoded video during the next sample.
+        del video, samples, x
 
-    log.success(f"Done! Generated one prompt -> {save_dir}")
+    log.success(f"Done! Generated {args.num_samples} samples for one prompt -> {save_dir}")

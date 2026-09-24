@@ -203,10 +203,19 @@ VAE、文本编码器和 tokenizer 默认按原生 `WAN_REPO` 布局拼接,但�
 使用 `DIT_PATH` 指向蒸馏后的 student checkpoint，Wan 2.2 的低噪声 student 则由
 `CKPT_LOW` 指定。
 
+设置 `NUM_SAMPLES=3`（Python 参数：`--num_samples 3`），即可在同一进程内连续生成
+3 个视频，复用已加载的模型，每次 batch size 为 1。默认值为 1，必须为正整数。
+各样本使用 `SEED`、`SEED+1`、`SEED+2`。每个样本分别打印 seed 和经过 CUDA
+同步的去噪耗时：首个标注 `warmup`（可能包含编译和 autotuning），后续标注
+`after warmup`，可用于观察预热后的生成速度。计时不含 VAE 解码和视频写入，
+包含去噪期间的专家模型搬运。首个 warmup 样本也会保存；多样本文件名增加
+`_sample_00_seed_0` 等后缀，单样本保留指定的视频文件名。
+此行为替代此前 `num_samples` 控制 batch 大小的语义。
+
 Wan 2.1 蒸馏 T2V:
 
 ```bash
-DIT_PATH=path/to/distill_model.pt \
+NUM_SAMPLES=3 SEED=0 DIT_PATH=path/to/distill_model.pt \
   bash scripts/inference/eval_student_2pt1_distilled.sh \
   pretrain_weights/Wan2.1-T2V-14B \
   outputs/inference/wan21_t2v \
@@ -217,7 +226,7 @@ DIT_PATH=path/to/distill_model.pt \
 Wan 2.1 蒸馏 I2V:
 
 ```bash
-DIT_PATH=path/to/distill_model.pt \
+NUM_SAMPLES=3 SEED=0 DIT_PATH=path/to/distill_model.pt \
   bash scripts/inference/eval_student_2pt1_distilled.sh \
   pretrain_weights/Wan2.1-I2V-14B-480P \
   outputs/inference/wan21_i2v \
@@ -228,7 +237,7 @@ DIT_PATH=path/to/distill_model.pt \
 Wan 2.2 蒸馏 T2V:
 
 ```bash
-DIT_PATH=path/to/distill_high_noise_model.pt \
+NUM_SAMPLES=3 SEED=0 DIT_PATH=path/to/distill_high_noise_model.pt \
 CKPT_LOW=path/to/distill_low_noise_model.pt \
   bash scripts/inference/eval_student_2pt2_distilled.sh \
   pretrain_weights/Wan2.2-T2V-A14B \

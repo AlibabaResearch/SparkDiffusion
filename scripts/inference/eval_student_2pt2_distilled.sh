@@ -75,7 +75,7 @@
 #   RESOLUTION  [480p]  480p | 720p
 #   ASPECT_RATIO[16:9]
 #   SEED        [1]
-#   NUM_SAMPLES [1]
+#   NUM_SAMPLES [1] Sequential samples, batch size 1; seeds SEED, SEED+1, ...
 #   PROMPT       [built-in]  single prompt passed to the Python entrypoint
 #   OUT_ROOT    [outputs/inference]
 #                       only the default parent of output_dir (arg 2)
@@ -163,7 +163,7 @@ SAVE_PATH="$OUTPUT_DIR/${MODEL_SIZE}_${PRECISION}_distilled${SUFFIX}.mp4"
 echo "======================================================================"
 echo "[eval_student_2pt2_distilled] Wan2.2 | mode=distilled | model=$MODEL_SIZE"
 echo "[eval_student_2pt2_distilled] entry=$ENTRY"
-echo "[eval_student_2pt2_distilled] steps=$NUM_STEPS (high=$STEPS_HIGH low=$STEPS_LOW) | frames=$NUM_FRAMES | resolution=$RESOLUTION $ASPECT_RATIO | seed=$SEED"
+echo "[eval_student_2pt2_distilled] steps=$NUM_STEPS (high=$STEPS_HIGH low=$STEPS_LOW) | frames=$NUM_FRAMES | resolution=$RESOLUTION $ASPECT_RATIO | seed=$SEED | samples=$NUM_SAMPLES (first sample: warmup)"
 echo "[eval_student_2pt2_distilled] precision=$PRECISION | quant=${QUANT_TYPE:-disabled} | attn=$ATTN_PRECISION"
 echo "[eval_student_2pt2_distilled] high=$DIT_PATH"
 echo "[eval_student_2pt2_distilled] low =$DIT_PATH_LOW"

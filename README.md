@@ -223,10 +223,22 @@ positional argument is the native asset root for the VAE, text encoder,
 tokenizer, and optional CLIP encoder; set `DIT_PATH` to the distilled student
 checkpoint, and set `CKPT_LOW` for the Wan 2.2 low-noise student.
 
+Set `NUM_SAMPLES=3` (Python: `--num_samples 3`) to generate three videos
+sequentially in one process, reusing the loaded models with batch size 1.
+The default is 1; values must be positive integers. Seeds are `SEED`,
+`SEED+1`, and `SEED+2`. Each sample logs its seed and CUDA-synchronized
+denoising time: the first is labeled `warmup` (may include compilation and
+autotuning), and later samples are labeled `after warmup`. Compare the later
+times to observe warmed-up generation; decoding and video writing are excluded,
+while expert transfers during denoising are included. All samples, including
+the warmup sample, are saved separately. With multiple samples, filenames gain
+`_sample_00_seed_0`, etc.; a single sample retains the requested video filename.
+This replaces the previous batched meaning of `num_samples`.
+
 Wan 2.1 distilled T2V:
 
 ```bash
-DIT_PATH=path/to/distill_model.pt \
+NUM_SAMPLES=3 SEED=0 DIT_PATH=path/to/distill_model.pt \
   bash scripts/inference/eval_student_2pt1_distilled.sh \
   pretrain_weights/Wan2.1-T2V-14B \
   outputs/inference/wan21_t2v \
@@ -237,7 +249,7 @@ DIT_PATH=path/to/distill_model.pt \
 Wan 2.1 distilled I2V:
 
 ```bash
-DIT_PATH=path/to/distill_model.pt \
+NUM_SAMPLES=3 SEED=0 DIT_PATH=path/to/distill_model.pt \
   bash scripts/inference/eval_student_2pt1_distilled.sh \
   pretrain_weights/Wan2.1-I2V-14B-480P \
   outputs/inference/wan21_i2v \
@@ -248,7 +260,7 @@ DIT_PATH=path/to/distill_model.pt \
 Wan 2.2 distilled T2V:
 
 ```bash
-DIT_PATH=path/to/distill_high_noise_model.pt \
+NUM_SAMPLES=3 SEED=0 DIT_PATH=path/to/distill_high_noise_model.pt \
 CKPT_LOW=path/to/distill_low_noise_model.pt \
   bash scripts/inference/eval_student_2pt2_distilled.sh \
   pretrain_weights/Wan2.2-T2V-A14B \

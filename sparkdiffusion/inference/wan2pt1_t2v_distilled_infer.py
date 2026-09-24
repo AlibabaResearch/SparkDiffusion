@@ -14,10 +14,11 @@
 # limitations under the License.
 
 import argparse
+from sparkdiffusion.inference.sampling_utils import positive_int, sample_output_path
 import os
 
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 from tqdm import tqdm
 import time
 
@@ -128,7 +129,7 @@ def parse_arguments() -> argparse.Namespace:
         "1.3B_rola", "14B_rola",
         "1.3B_pure_sla", "14B_pure_sla",
     ], default="14B_rola", help="Model variant: dense / rola / pure_sla")
-    parser.add_argument("--num_samples", type=int, default=1, help="Number of samples to generate")
+    parser.add_argument("--num_samples", type=positive_int, default=1, help="Sequential samples per prompt (batch size 1); seeds start at --seed")
     parser.add_argument("--num_steps", type=int, choices=[1, 2, 3, 4, 8], default=4, help="1~4 or 8 for timestep-distilled inference")
     parser.add_argument("--sigma_max", type=float, default=1600, help="Initial sigma for the distilled sampler")
     parser.add_argument("--dit_path", type=str, default="", help="Custom path to the DiT model checkpoint for distilled models.")
@@ -285,17 +286,23 @@ if __name__ == "__main__":
     log.info(f"torch.compile enabled ({COMPILE_MODE})")
 
     # Generate the requested inference case.
-    for p_idx, prompt in enumerate(tqdm(prompts, desc="Prompts")):
+    for sample_idx in range(args.num_samples):
+        p_idx, prompt = 0, prompts[0]
+        sample_seed = args.seed + sample_idx
+        phase = "warmup (may include compilation/autotuning)" if sample_idx == 0 else "after warmup"
+        sample_label = f"[sample {sample_idx + 1}/{args.num_samples}, seed={sample_seed}, {phase}]"
+        log.info(sample_label)
+        output_path = sample_output_path(args.save_path, sample_idx, args.num_samples, sample_seed)
         log.info(f"[{p_idx + 1}/{len(prompts)}] {prompt[:80]}")
 
         text_emb = all_text_embs[p_idx : p_idx + 1]  # [1, L, D]
-        condition = {"crossattn_emb": repeat(text_emb.to(**tensor_kwargs), "b l d -> (k b) l d", k=args.num_samples)}
+        condition = {"crossattn_emb": text_emb.to(**tensor_kwargs)}
 
         generator = torch.Generator(device=tensor_kwargs["device"])
-        generator.manual_seed(args.seed)
+        generator.manual_seed(sample_seed)
 
         init_noise = torch.randn(
-            args.num_samples,
+            1,
             *state_shape,
             dtype=torch.float32,
             device=tensor_kwargs["device"],
@@ -320,7 +327,7 @@ if __name__ == "__main__":
 
         torch.cuda.synchronize()
         denoise_end = time.perf_counter()
-        log.info(f"[prompt{p_idx}] denoising time: {denoise_end - denoise_start:.2f}s")
+        log.info(f"{sample_label} denoising time: {denoise_end - denoise_start:.2f}s")
 
         samples = x.float()
         video = tokenizer.decode(samples)
@@ -329,10 +336,11 @@ if __name__ == "__main__":
         to_show = video.unsqueeze(0)  # [1, B, C, T, H, W]
         save_image_or_video(
             rearrange(to_show, "n b c t h w -> c t (n h) (b w)"),
-            args.save_path,
+            output_path,
             fps=16,
         )
-        log.info(f"Saved: {args.save_path}")
+        log.info(f"Saved: {output_path}")
+        # Do not retain the previous decoded video during the next sample.
+        del video, samples, x, to_show
 
-    log.success(f"Done! Generated one prompt -> {args.save_path}")
-        
+    log.success(f"Done! Generated {args.num_samples} samples for one prompt -> {args.save_path}")
