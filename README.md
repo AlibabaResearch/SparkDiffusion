@@ -121,6 +121,59 @@ ROLA_OUTPUT_ROOT=/path/to/rola_outputs \
 source scripts/env.sh
 ```
 
+## Quick Start
+
+The inference examples below use Wan 2.1 T2V at 480p. You need:
+
+- A native Wan 2.1 T2V model repository containing the VAE, T5 encoder,
+  tokenizer, and base DiT assets.
+- A compatible SparkDiffusion checkpoint from the
+  [SparkDiffusion Hugging Face collection](https://huggingface.co/collections/alibabagroup/sparkdiffusion),
+  such as `SparkWan2.1-T2V-14B-480P-0.90Sparsity`.
+- A CUDA-capable GPU. Use `fp8` on GPUs with FP8 Tensor Core support; use
+  `bf16` otherwise.
+
+Clone the repository and install a CUDA-matched PyTorch and a compatible
+`flash-attn` build before installing the remaining dependencies:
+
+```bash
+git clone git@github.com:AlibabaResearch/SparkDiffusion.git
+cd SparkDiffusion
+pip install -r requirements.txt
+source scripts/env.sh
+```
+
+Place the native Wan assets under `pretrain_weights/`, for example:
+
+```text
+pretrain_weights/
+└── Wan2.1-T2V-14B/
+    ├── Wan2.1_VAE.pth
+    ├── models_t5_umt5-xxl-enc-bf16.pth
+    ├── google/umt5-xxl/
+    └── diffusion_pytorch_model-*.safetensors
+```
+
+Download the SparkDiffusion checkpoint separately and set `DIT_PATH` to its
+checkpoint file or directory. Then run three sequential samples in one process
+to see the warmup and steady-state timings:
+
+```bash
+NUM_SAMPLES=3 SEED=0 \
+DIT_PATH=/path/to/SparkWan2.1-T2V-14B-480P-0.90Sparsity \
+bash scripts/inference/eval_student_2pt1_distilled.sh \
+  pretrain_weights/Wan2.1-T2V-14B \
+  outputs/inference/quickstart \
+  4 fp8 14B_rola 0.1 "" \
+  "A cat playing in the garden under the sun."
+```
+
+The first sample is labeled `warmup` and may include compilation or kernel
+autotuning. Later samples are labeled `after warmup` and are the appropriate
+ones for steady-state latency comparisons. Generated videos are saved under
+`outputs/inference/quickstart`; with `NUM_SAMPLES=3`, each sample is saved
+separately with a `_sample_<index>_seed_<seed>` suffix.
+
 ## Data and Weights
 
 Use the following layout convention:

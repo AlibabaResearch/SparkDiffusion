@@ -115,6 +115,56 @@ ROLA_OUTPUT_ROOT=/path/to/rola_outputs \
 source scripts/env.sh
 ```
 
+## 快速开始
+
+下面的推理示例使用 Wan 2.1 T2V 480p。运行前需要准备:
+
+- 一个原生 Wan 2.1 T2V 模型仓库,其中包含 VAE、T5 编码器、tokenizer
+  和基础 DiT 权重。
+- 从 [SparkDiffusion Hugging Face 合集](https://huggingface.co/collections/alibabagroup/sparkdiffusion)
+  下载兼容的 SparkDiffusion checkpoint,例如
+  `SparkWan2.1-T2V-14B-480P-0.90Sparsity`。
+- 支持 CUDA 的 GPU。支持 FP8 Tensor Core 的 GPU 使用 `fp8`,否则使用
+  `bf16`。
+
+先克隆仓库,安装与 CUDA 匹配的 PyTorch 和兼容的 `flash-attn`,再安装其余依赖:
+
+```bash
+git clone git@github.com:AlibabaResearch/SparkDiffusion.git
+cd SparkDiffusion
+pip install -r requirements.txt
+source scripts/env.sh
+```
+
+将原生 Wan 资产放在 `pretrain_weights/` 下,例如:
+
+```text
+pretrain_weights/
+└── Wan2.1-T2V-14B/
+    ├── Wan2.1_VAE.pth
+    ├── models_t5_umt5-xxl-enc-bf16.pth
+    ├── google/umt5-xxl/
+    └── diffusion_pytorch_model-*.safetensors
+```
+
+单独下载 SparkDiffusion checkpoint,并将 `DIT_PATH` 设置为 checkpoint
+文件或目录。然后在同一进程内连续生成 3 个样本,观察 warmup 和稳态耗时:
+
+```bash
+NUM_SAMPLES=3 SEED=0 \
+DIT_PATH=/path/to/SparkWan2.1-T2V-14B-480P-0.90Sparsity \
+bash scripts/inference/eval_student_2pt1_distilled.sh \
+  pretrain_weights/Wan2.1-T2V-14B \
+  outputs/inference/quickstart \
+  4 fp8 14B_rola 0.1 "" \
+  "A cat playing in the garden under the sun."
+```
+
+首个样本标记为 `warmup`,可能包含编译或 kernel autotuning 时间。后续样本
+标记为 `after warmup`,适合用于稳态延迟比较。生成的视频保存在
+`outputs/inference/quickstart` 下;当 `NUM_SAMPLES=3` 时,每个样本会单独保存,
+文件名带有 `_sample_<index>_seed_<seed>` 后缀。
+
 ## 数据与权重
 
 请使用以下目录布局约定:
