@@ -159,7 +159,7 @@ MAX_ITER=250 SAVE_ITER=50 EXPERT=low bash scripts/sparse_finetune/run_finetune_2
 低噪声训练。RoLa 训练启动前必须将 `SLA_SRC` 指向外部 SLA 源码目录；所有训练
 脚本都会在启动 `torchrun` 前校验该目录。常用的覆盖项包括 `PRETRAINED_CKPT`、
 `DATASET`、`NUM_GPUS`、`MAX_ITER`、`SAVE_ITER`、`BATCH_SIZE`、`LR` 和 `EXPERIMENT`。
-`MAX_ITER` 表示优化器更新的总步数,`SAVE_ITER` 表示按优化器步数计算的 checkpoint
+`MAX_ITER` 表示优化器更新的总步数，`SAVE_ITER` 表示按优化器步数计算的 checkpoint
 保存间隔；可通过这两个环境变量自行指定训练步数和保存间隔。
 
 ### 预训练权重(`PRETRAINED_CKPT`)
