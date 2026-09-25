@@ -192,7 +192,7 @@ outputs/
 Wan 2.1:
 
 ```bash
-SLA_SRC=path/to/SLA \
+SLA_SRC=path/to/SLA MAX_ITER=250 SAVE_ITER=50 \
   bash scripts/sparse_finetune/run_finetune_2pt1.sh
 ```
 
@@ -201,14 +201,16 @@ SLA_SRC=path/to/SLA \
 ```bash
 export SLA_SRC=path/to/SLA
 
-EXPERT=high bash scripts/sparse_finetune/run_finetune_2pt2.sh
-EXPERT=low bash scripts/sparse_finetune/run_finetune_2pt2.sh
+MAX_ITER=250 SAVE_ITER=50 EXPERT=high bash scripts/sparse_finetune/run_finetune_2pt2.sh
+MAX_ITER=250 SAVE_ITER=50 EXPERT=low bash scripts/sparse_finetune/run_finetune_2pt2.sh
 ```
 
 使用 `EXPERT=joint` 走双专家联合训练路径。使用 `EXPERT=both` 依次启动高噪声和
 低噪声训练。RoLa 训练启动前必须将 `SLA_SRC` 指向外部 SLA 源码目录；所有训练
 脚本都会在启动 `torchrun` 前校验该目录。常用的覆盖项包括 `PRETRAINED_CKPT`、
-`DATASET`、`NUM_GPUS`、`MAX_ITER`、`BATCH_SIZE`、`LR` 和 `EXPERIMENT`。
+`DATASET`、`NUM_GPUS`、`MAX_ITER`、`SAVE_ITER`、`BATCH_SIZE`、`LR` 和 `EXPERIMENT`。
+`MAX_ITER` 表示优化器更新的总步数，`SAVE_ITER` 表示按优化器步数计算的 checkpoint
+保存间隔；可通过这两个环境变量自行指定训练步数和保存间隔。
 
 ### 预训练权重(`PRETRAINED_CKPT`)
 

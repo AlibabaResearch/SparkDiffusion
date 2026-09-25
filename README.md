@@ -205,7 +205,7 @@ finetuning or `DATASET_ROOT` for distillation when using a different layout.
 Wan 2.1:
 
 ```bash
-SLA_SRC=path/to/SLA \
+SLA_SRC=path/to/SLA MAX_ITER=250 SAVE_ITER=50 \
   bash scripts/sparse_finetune/run_finetune_2pt1.sh
 ```
 
@@ -214,8 +214,8 @@ Wan 2.2 high-noise and low-noise experts with a native model repository:
 ```bash
 export SLA_SRC=path/to/SLA
 
-EXPERT=high bash scripts/sparse_finetune/run_finetune_2pt2.sh
-EXPERT=low bash scripts/sparse_finetune/run_finetune_2pt2.sh
+MAX_ITER=250 SAVE_ITER=50 EXPERT=high bash scripts/sparse_finetune/run_finetune_2pt2.sh
+MAX_ITER=250 SAVE_ITER=50 EXPERT=low bash scripts/sparse_finetune/run_finetune_2pt2.sh
 ```
 
 Use `EXPERT=joint` for the joint two-expert training path. Use
@@ -223,7 +223,10 @@ Use `EXPERT=joint` for the joint two-expert training path. Use
 RoLa training requires `SLA_SRC` to point to the external SLA checkout before
 launch; every training launcher validates it before starting `torchrun`.
 Important overrides include `PRETRAINED_CKPT`, `DATASET`, `NUM_GPUS`,
-`MAX_ITER`, `BATCH_SIZE`, `LR`, and `EXPERIMENT`.
+`MAX_ITER`, `SAVE_ITER`, `BATCH_SIZE`, `LR`, and `EXPERIMENT`.
+`MAX_ITER` sets the total number of optimizer update steps, and `SAVE_ITER`
+sets the checkpoint interval in optimizer steps. Override these variables to
+choose your own training length and save interval.
 
 ### Pretrained checkpoint (`PRETRAINED_CKPT`)
 
