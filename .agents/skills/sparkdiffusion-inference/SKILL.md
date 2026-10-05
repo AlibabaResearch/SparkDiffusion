@@ -29,7 +29,7 @@ CUDA_VISIBLE_DEVICES=0 \
 bash scripts/inference/eval_student_2pt1_distilled.sh \
   pretrain_weights/Wan2.1-T2V-14B-Diffusers \
   outputs/inference/wan21_t2v \
-  4 fp8 14B_sla "" "" \
+  4 fp8 14B_rola "" "" \
   "A cat playing in the garden under the sun."
 ```
 
@@ -54,7 +54,7 @@ Pass the reference image as the seventh positional argument:
 bash scripts/inference/eval_student_2pt1_distilled.sh \
   pretrain_weights/Wan2.1-I2V-14B-480P-Diffusers \
   outputs/inference/wan21_i2v \
-  4 fp8 14B_sla "" examples/i2v_input_1.jpg \
+  4 fp8 14B_rola "" examples/i2v_input_1.jpg \
   "A person walks through a forest."
 ```
 
@@ -69,7 +69,7 @@ CKPT_LOW=pretrain_weights/Wan2.2-T2V-A14B-Diffusers/transformer_2 \
 bash scripts/inference/eval_student_2pt2_distilled.sh \
   pretrain_weights/Wan2.2-T2V-A14B-Diffusers \
   outputs/inference/wan22_t2v \
-  4 fp8 A14B_sla "" \
+  4 fp8 A14B_rola "" \
   "A cat playing in the garden under the sun."
 ```
 

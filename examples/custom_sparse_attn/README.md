@@ -55,11 +55,11 @@ changes to the core code**.
 
 - The network layers `wan2pt1.py` / `wan2pt2.py` only query the registry when
   `attn_variant` is explicitly set; when `attn_variant=None` (the default), they **follow
-  the existing `use_sla_attn` (and similar) bool-switch logic unchanged**.
-- Verified: a network built with `attn_variant="sla"` has **state_dict keys identical**
-  (1255/1255) to the legacy `use_sla_attn=True` path — the plugin route is an equivalent
+  the existing `use_rola_attn` (and similar) bool-switch logic unchanged**.
+- Verified: a network built with `attn_variant="rola"` has **state_dict keys identical**
+  (1255/1255) to the legacy `use_rola_attn=True` path — the plugin route is an equivalent
   parallel path with zero side effects.
-- The built-in SLA is already registered via `@register_sparse_attn("sla", ...)` and can
+- The built-in RoLa is already registered via `@register_sparse_attn("rola", ...)` and can
   serve as a reference.
 
 ## Notes on Weight Loading
