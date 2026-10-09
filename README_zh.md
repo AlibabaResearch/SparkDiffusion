@@ -18,6 +18,8 @@
 
 ## 最新动态
 
+- **2026-10-09**:社区贡献者 [hiroki-abe-58](https://github.com/hiroki-abe-58) 为 SparkDiffusion 提供了 ComfyUI 支持:
+  [ComfyUI-SparkDiffusion](https://github.com/hiroki-abe-58/ComfyUI-SparkDiffusion)。
 - **2026-09-25**:我们在 Hugging Face 上发布了 SparkDiffusion 模型权重:
   [alibabagroup/sparkdiffusion](https://huggingface.co/collections/alibabagroup/sparkdiffusion)。
 
