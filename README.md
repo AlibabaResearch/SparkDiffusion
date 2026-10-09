@@ -18,6 +18,7 @@
 
 ## News
 
+- **2026-10-09**: Community contributor [hiroki-abe-58](https://github.com/hiroki-abe-58) has added ComfyUI support for SparkDiffusion: [ComfyUI-SparkDiffusion](https://github.com/hiroki-abe-58/ComfyUI-SparkDiffusion).
 - **2026-09-25**: We released the SparkDiffusion model weights on Hugging Face: [alibabagroup/sparkdiffusion](https://huggingface.co/collections/alibabagroup/sparkdiffusion).
 
 ## Overview
