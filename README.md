@@ -174,6 +174,15 @@ ones for steady-state latency comparisons. Generated videos are saved under
 `outputs/inference/quickstart`; with `NUM_SAMPLES=3`, each sample is saved
 separately with a `_sample_<index>_seed_<seed>` suffix.
 
+## Community Integrations
+
+- [ComfyUI-SparkDiffusion](https://github.com/hiroki-abe-58/ComfyUI-SparkDiffusion):
+  An independently maintained ComfyUI integration that runs the official
+  SparkDiffusion inference entry points in an isolated Python runtime, with
+  T2V/I2V nodes and example workflows. Tested on an RTX 5090 with WSL2 and an
+  experimental Windows-native compatibility backend. See the linked repository
+  for installation, validated model/backend combinations, and limitations.
+
 ## Data and Weights
 
 Use the following layout convention:

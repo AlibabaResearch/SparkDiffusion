@@ -165,6 +165,14 @@ bash scripts/inference/eval_student_2pt1_distilled.sh \
 `outputs/inference/quickstart` 下;当 `NUM_SAMPLES=3` 时,每个样本会单独保存,
 文件名带有 `_sample_<index>_seed_<seed>` 后缀。
 
+## 社区集成
+
+- [ComfyUI-SparkDiffusion](https://github.com/hiroki-abe-58/ComfyUI-SparkDiffusion)：
+  由社区独立维护的 ComfyUI 集成，在隔离的 Python 运行环境中调用 SparkDiffusion
+  官方推理入口，提供 T2V/I2V 节点和示例工作流。已在 RTX 5090 上测试 WSL2
+  后端和实验性的 Windows 原生兼容后端。安装说明、已验证的模型与后端组合及
+  使用限制请参阅该仓库。
+
 ## 数据与权重
 
 请使用以下目录布局约定:
