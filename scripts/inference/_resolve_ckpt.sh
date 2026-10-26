@@ -69,16 +69,30 @@ resolve_ckpt_root() {
     # A DCP training checkpoint needs a one-off conversion; a directory of
     # safetensors loads directly and must not be mistaken for one.
     if _rc_is_dcp_dir "$DIT_PATH"; then
-        local name pt
+        local src name key pt
+        # The reader needs the directory that holds the shards and .metadata.
+        src="$DIT_PATH"
+        compgen -G "$src/*.distcp" >/dev/null 2>&1 || src="$src/model"
         name="$(basename "$DIT_PATH")"
         [ "$name" = "model" ] && name="$(basename "$(dirname "$DIT_PATH")")"
-        pt="assets/_ckpts/${name}_ema.pt"
+        # Key the cache on the checkpoint itself (real path, file names, sizes and
+        # mtimes), so run_A/iter_N and run_B/iter_N never share a converted file.
+        key="$(python -c 'import hashlib, os, sys
+d = os.path.realpath(sys.argv[1])
+h = hashlib.sha256(d.encode())
+for f in sorted(os.listdir(d)):
+    s = os.stat(os.path.join(d, f))
+    h.update(f"\0{f}\0{s.st_size}\0{s.st_mtime_ns}".encode())
+print(h.hexdigest()[:16])' "$src")"
+        pt="assets/_ckpts/${name}_${key}_ema.pt"
         mkdir -p "$(dirname "$pt")"
         if [ ! -f "$pt" ]; then
-            echo "[$tag] dcp_to_pth: converting $DIT_PATH -> $pt"
-            python scripts/dcp_to_pth.py --dcp_checkpoint_dir "$DIT_PATH" --save_path "$pt"
+            echo "[$tag] dcp_to_pth: converting $src -> $pt"
+            # Write to a temporary name first: an interrupted run leaves no file to reuse.
+            python scripts/dcp_to_pth.py --dcp_checkpoint_dir "$src" --save_path "$pt.tmp.$$"
+            mv -f "$pt.tmp.$$" "$pt"
         else
-            echo "[$tag] dcp_to_pth: using cached $pt"
+            echo "[$tag] dcp_to_pth: using cached $pt (from $src)"
         fi
         DIT_PATH="$pt"
     fi
